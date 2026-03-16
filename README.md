@@ -1,5 +1,7 @@
 # Knowledge Graph MCP Server
 
+[繁體中文](README.zh-TW.md) | English
+
 Long-term memory system for AI agents. Enables agents to accumulate domain expertise through mentorship or professional practice, automatically recall relevant knowledge, and grow from apprentice to independent expert.
 
 Works with any domain requiring **continuous learning + knowledge evolution**: software engineering, music production, design, medical diagnosis, legal analysis, etc. Any scenario with an "expert teaches → student practices → gradual internalization" knowledge transfer pattern.
