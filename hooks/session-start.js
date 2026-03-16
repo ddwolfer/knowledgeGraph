@@ -10,6 +10,7 @@ import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { retrievability } from '../lib/decay.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -93,19 +94,7 @@ try {
     // Level 4 + fundamental never expire
     if (level >= 4 && meta.category === 'fundamental') continue;
 
-    // Calculate retrievability inline (CortexGraph × FSRS)
-    const S = node.stability || (meta.category === 'fundamental' ? 365 : { principle: 30, pattern: 7, inference: 3 }[node.trust] || 7);
-    const lastAccessed = node.last_accessed || node.created_at;
-    const dtDays = (Date.now() - new Date(lastAccessed).getTime()) / (1000 * 60 * 60 * 24);
-
-    if (dtDays <= 0) continue;
-
-    const lambdaFast = Math.LN2 / S;
-    const lambdaSlow = Math.LN2 / (S * 10);
-    const temporal = 0.6 * Math.exp(-lambdaFast * dtDays) + 0.4 * Math.exp(-lambdaSlow * dtDays);
-    const frequency = Math.pow((node.access_count || 0) + 1, 0.6);
-    const importance = { principle: 1.5, pattern: 1.0, inference: 0.7 }[node.trust] || 1.0;
-    const R = Math.min(temporal * frequency * importance, 1.0);
+    const R = retrievability(node);
 
     if (R < 0.02) {
       // Check no dependents
