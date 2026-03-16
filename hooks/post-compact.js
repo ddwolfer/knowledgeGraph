@@ -11,11 +11,12 @@ import * as sqliteVec from 'sqlite-vec';
 import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DB_PATH = join(__dirname, '..', 'knowledge.db');
-const PRODUCTION_FLAG = join(process.env.HOME, '.claude/hooks/.song-production-active');
+const PRODUCTION_FLAG = join(os.homedir(), '.claude', 'hooks', '.kg-enforcer-active');
 
 let db;
 try {
@@ -46,9 +47,9 @@ try {
     }
   }
 
-  // If in production mode, inject recent episodes
+  // If in active development mode, inject recent episodes
   if (existsSync(PRODUCTION_FLAG)) {
-    output += '\n[做歌模式啟用中]\n';
+    output += '\n[開發模式啟用中]\n';
 
     const recentEpisodes = db.prepare(`
       SELECT type, summary, outcome

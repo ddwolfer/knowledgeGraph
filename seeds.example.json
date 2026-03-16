@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Write before Read",
+    "content": "Always use the Read tool before Write to avoid 'File has not been read yet' errors.",
+    "type": "rule",
+    "category": "fundamental",
+    "quote": "Write 前必須先 Read"
+  },
+  {
+    "name": "Edit old_string must be unique",
+    "content": "When using the Edit tool, provide enough context so old_string uniquely matches in the file.",
+    "type": "rule",
+    "category": "fundamental",
+    "quote": "Edit old_string 必須唯一"
+  }
+]

@@ -3,18 +3,19 @@
 /**
  * Search Enforcer hook (PreToolUse)
  * Blocks write operations until search_memory has been called in the current session.
- * Only active when .song-production-active flag exists.
+ * Only active when .kg-enforcer-active flag exists.
  *
  * Circuit breaker: after 3 consecutive blocks, auto-allow to prevent deadlock.
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import os from 'os';
 
-const FLAG_FILE = join(process.env.HOME, '.claude/hooks/.song-production-active');
-const STATE_FILE = join(process.env.HOME, '.claude/hooks/.search-enforcer-state.json');
+const FLAG_FILE = join(os.homedir(), '.claude', 'hooks', '.kg-enforcer-active');
+const STATE_FILE = join(os.homedir(), '.claude', 'hooks', '.search-enforcer-state.json');
 
-// Only active during song production
+// Only active when flag file exists
 if (!existsSync(FLAG_FILE)) {
   process.exit(0);
 }
@@ -53,15 +54,9 @@ const EXACT_READ_TOOLS = new Set([
   'search_memory', 'traverse_graph', 'recall_experience', 'memory_stats',  // KG reads
 ]);
 const PREFIX_READ_TOOLS = [
-  'mcp__ableton-mcp-pro__get_', 'mcp__ableton-mcp-pro__list_',
-  'mcp__ableton-mcp-pro__analyze_', 'mcp__ableton-mcp-pro__measure_',
-  'mcp__ableton-mcp-pro__browse_', 'mcp__ableton-mcp-pro__introspect_',
-  'mcp__ableton-mcp-pro__compare_', 'mcp__ableton-mcp-pro__evaluate_',
-  'mcp__ableton-mcp-pro__classify_', 'mcp__ableton-mcp-pro__score_',
-  'mcp__ableton-mcp-pro__splice_search', 'mcp__ableton-mcp-pro__splice_preview',
-  'mcp__ableton-mcp-pro__splice_get_token',
   'mcp__knowledge-graph__search', 'mcp__knowledge-graph__traverse',
   'mcp__knowledge-graph__recall', 'mcp__knowledge-graph__memory_stats',
+  'mcp__knowledge-graph__list',
 ];
 
 const isReadTool = EXACT_READ_TOOLS.has(toolName) ||
