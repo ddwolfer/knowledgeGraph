@@ -1,31 +1,31 @@
 # Knowledge Graph MCP Server
 
-AI agent 的長期記憶系統。透過師徒制教學或專業實踐，讓 agent 累積領域知識、自動回憶、從學徒逐步成長為獨立專家。
+Long-term memory system for AI agents. Enables agents to accumulate domain expertise through mentorship or professional practice, automatically recall relevant knowledge, and grow from apprentice to independent expert.
 
-適用於任何需要**持續學習 + 知識演化**的場景：音樂製作、程式開發、設計、醫療診斷、法律分析等。只要有「老師教學 → 學生實踐 → 逐步內化」的知識傳遞模式，這套系統都能用。
+Works with any domain requiring **continuous learning + knowledge evolution**: software engineering, music production, design, medical diagnosis, legal analysis, etc. Any scenario with an "expert teaches → student practices → gradual internalization" knowledge transfer pattern.
 
-## 為什麼需要這個
+## Why This Exists
 
-Claude 每次對話從零開始。在專業知識的學徒制教學中：
+Claude starts every conversation from zero. In professional apprenticeship-style teaching:
 
-- **專家教的會忘** — context compaction 後關鍵教訓消失，同樣的錯重複犯
-- **AI 會發明術語** — 沒有 ground truth，從單次示範過度推論成永久規則
-- **知識不會演化** — 新教學跟舊知識矛盾時無法取代
-- **搜尋靠路徑** — 換個說法就找不到相關知識
-- **永遠是學生** — 沒有機制讓 AI 自己的發現成長為持久知識
+- **Expert lessons are forgotten** — context compaction drops critical lessons, same mistakes repeat
+- **AI fabricates terminology** — without ground truth, it over-generalizes from single demonstrations
+- **Knowledge can't evolve** — new teachings can't replace contradicted old knowledge
+- **Search is path-dependent** — rephrasing a question yields no results
+- **Forever a student** — no mechanism for the AI's own discoveries to become durable knowledge
 
-## 安裝
+## Installation
 
 ```bash
 cd mcp/knowledge-graph
 npm install
 ```
 
-首次啟動會自動下載 Qwen3-Embedding-0.6B ONNX 模型（~560MB，只下載一次）。
+On first startup, the Qwen3-Embedding-0.6B ONNX model (~560MB) is automatically downloaded (one-time only).
 
-### MCP 設定
+### MCP Configuration
 
-在專案 `.mcp.json`：
+In your project's `.mcp.json`:
 
 ```json
 {
@@ -38,231 +38,231 @@ npm install
 }
 ```
 
-### Hooks 設定
+### Hook Configuration
 
-在 `~/.claude/settings.json` 的 `hooks` 中加入（見下方 [Hooks 章節](#hooks自動化) 的完整設定）。
+Add hooks to `~/.claude/settings.json` (see [Hooks section](#hooks-automation) for full configuration).
 
-### 匯入既有知識（可選）
+### Import Existing Knowledge (Optional)
 
 ```bash
-node scripts/import-skills.js       # 將 markdown 檔案匯入為 KG 節點
-node scripts/backfill-embeddings.js  # 補向量索引 + 結構邊
-node scripts/backfill-decay.js       # 補 stability + memory_level + category
+node scripts/import-skills.js       # Import markdown files as KG nodes
+node scripts/backfill-embeddings.js  # Add vector indexes + structural edges
+node scripts/backfill-decay.js       # Add stability + memory_level + category
 ```
 
 ---
 
-## 核心設計
+## Core Design
 
-### 為什麼自建
+### Why Build From Scratch
 
-研究了 25+ 個 Claude Code 記憶系統（Claude-Recall、A-MEM、Mnemon、Graphiti、memsearch 等），沒有一個同時滿足：
+After researching 25+ Claude Code memory systems (Claude-Recall, A-MEM, Mnemon, Graphiti, memsearch, etc.), none simultaneously satisfied:
 
-| 需求 | 現有方案的問題 | 本系統的做法 |
-|------|-------------|-------------|
-| 領域專屬邊類型 | 只有通用邊 | 10 種語義邊（must_precede, aligns_to 等）|
-| 信任等級區分 | 不區分知識來源 | principle（專家教的）> pattern（觀察的）> inference（推測的）|
-| Anti-fabrication | 無防護 | principle 必須附帶專家原話 quote |
-| 基本功 vs 創意空間 | 一視同仁 | fundamental 永不衰退，creative 可挑戰 |
-| 記憶衰退 + 成長路徑 | 有衰退但無成長 | FSRS desirable difficulty + Benna-Fusi 4 level |
-| 自動化 | 依賴使用者操作 | 6 hooks 覆蓋完整生命週期 |
+| Requirement | Existing Solutions | This System |
+|-------------|-------------------|-------------|
+| Domain-specific edge types | Generic edges only | 10 semantic edge types (must_precede, aligns_to, etc.) |
+| Trust level distinction | No source differentiation | principle (expert-taught) > pattern (observed) > inference (AI-guessed) |
+| Anti-fabrication | No protection | principle requires expert's exact quote |
+| Fundamentals vs creative space | Treated equally | fundamental never decays, creative is challengeable |
+| Memory decay + growth path | Decay exists but no growth | FSRS desirable difficulty + Benna-Fusi 4-level cascade |
+| Automation | Depends on user action | 6 hooks covering full lifecycle |
 
-### 借鑑來源
+### Inspiration Sources
 
-| 來源 | 借鑑了什麼 |
-|------|-----------|
-| **Claude-Recall** | Hook 架構（search enforcer, correction detector）|
-| **A-MEM** | 邊的資料模型（relation_type + reasoning + weight）|
-| **CortexGraph** | 兩階段衰退（快衰退 + 慢長尾，比單一指數更真實）|
-| **FSRS (Anki)** | Desirable difficulty（快忘的記憶被想起 → 更大穩定性增強）|
-| **Benna-Fusi** | 記憶級聯（4 level 耐久度，獨立於知識來源）|
-| **Stanford Generative Agents** | 三信號檢索（recency + importance + relevance）|
-| **Graphiti/Zep** | 時間感知（valid_from / valid_until）|
-
----
-
-## 三層架構
-
-```
-┌──────────────────────────────────────────────┐
-│ Layer 1: 人格層（CLAUDE.md）                   │
-│ Agent 身份 + 行為準則                          │
-│ → 每個 turn 都載入，保證行為一致               │
-├──────────────────────────────────────────────┤
-│ Layer 2: 記憶層（Knowledge Graph MCP）         │
-│ SQLite + sqlite-vec + FTS5                    │
-│ 12 MCP 工具 + 三合一混合搜尋                    │
-│ → 按需調用，不佔 context                       │
-├──────────────────────────────────────────────┤
-│ Layer 3: 自動化層（Hooks）                     │
-│ 6 hooks 覆蓋完整生命週期                       │
-│ → 專家不需要提醒，全自動                        │
-└──────────────────────────────────────────────┘
-```
+| Source | What We Borrowed |
+|--------|-----------------|
+| **Claude-Recall** | Hook architecture (search enforcer, correction detector) |
+| **A-MEM** | Edge data model (relation_type + reasoning + weight) |
+| **CortexGraph** | Two-component decay (fast + slow exponential, more realistic than single decay) |
+| **FSRS (Anki)** | Desirable difficulty (fading memories gain MORE stability when recalled) |
+| **Benna-Fusi** | Memory cascade (4-level durability, independent of knowledge source) |
+| **Stanford Generative Agents** | Three-signal retrieval (recency + importance + relevance) |
+| **Graphiti/Zep** | Temporal awareness (valid_from / valid_until) |
 
 ---
 
-## 記憶衰退與成長系統
-
-### 設計哲學
+## Three-Layer Architecture
 
 ```
-學徒階段：專家說的權重最高 → 學基礎
-成長階段：自己的觀察被驗證 → 形成判斷力
-專家階段：自己的推論經實踐確認 → 有自己的見解
+┌──────────────────────────────────────────────────┐
+│ Layer 1: Persona (CLAUDE.md)                      │
+│ Agent identity + behavioral rules                 │
+│ → Loaded every turn for consistent behavior       │
+├──────────────────────────────────────────────────┤
+│ Layer 2: Memory (Knowledge Graph MCP)             │
+│ SQLite + sqlite-vec + FTS5                        │
+│ 12 MCP tools + hybrid search                      │
+│ → On-demand, doesn't consume context              │
+├──────────────────────────────────────────────────┤
+│ Layer 3: Automation (Hooks)                       │
+│ 6 hooks covering full lifecycle                   │
+│ → Expert doesn't need to remind, fully automatic  │
+└──────────────────────────────────────────────────┘
 ```
 
-**trust 是來源標記（誰說的），不是永久等級。** AI 自己驗證過的知識也能持久。
+---
 
-### 衰退：CortexGraph 兩階段 × FSRS Stability
+## Memory Decay & Growth System
+
+### Design Philosophy
+
+```
+Apprentice phase: Expert's words carry highest weight → learn fundamentals
+Growth phase:     Own observations get validated → develop judgment
+Expert phase:     Own inferences confirmed by practice → form independent views
+```
+
+**Trust is a source label (who said it), not a permanent rank.** AI's own validated knowledge can become equally durable.
+
+### Decay: CortexGraph Two-Component × FSRS Stability
 
 ```
 R = W_fast × e^(-λ_fast × t) + W_slow × e^(-λ_slow × t)
 ```
 
-- **快衰退**（半衰期 = S 天）：「剛學的容易忘」
-- **慢衰退**（半衰期 = S×10 天）：「存活下來的記得很久」
-- **S（stability）**：由 trust + category 決定初始值，被存取後透過 FSRS 增長
+- **Fast decay** (half-life = S days): "newly learned things are easily forgotten"
+- **Slow decay** (half-life = S×10 days): "what survives is remembered for a long time"
+- **S (stability)**: initialized by trust + category, grows on access via FSRS
 
-為什麼不用純指數或純 power-law：純指數忘太快、純 power-law 記太久。兩階段混合最符合人類遺忘數據。
+Why not pure exponential or pure power-law: pure exponential forgets too fast, pure power-law retains too much. Two-component blend best fits human forgetting data.
 
-| 知識類型 | 初始 S | 快半衰期 | 慢半衰期 |
-|---------|:------:|:-------:|:-------:|
-| 基本功（fundamental） | 365 天 | — | — |
-| 專家的創意選擇 | 30 天 | 30天 | 300天 |
-| 觀察到的模式 | 7 天 | 7天 | 70天 |
-| AI 推測 | 3 天 | 3天 | 30天 |
+| Knowledge Type | Initial S | Fast Half-Life | Slow Half-Life |
+|---------------|:---------:|:--------------:|:--------------:|
+| Fundamental (has right/wrong) | 365 days | — | — |
+| Expert's creative choice | 30 days | 30d | 300d |
+| Observed pattern | 7 days | 7d | 70d |
+| AI inference | 3 days | 3d | 30d |
 
-### 強化：FSRS Desirable Difficulty
+### Reinforcement: FSRS Desirable Difficulty
 
 ```
 stabilityGain = e^(1 - R) × gradeMultiplier
 ```
 
-核心洞察（來自 FSRS 對幾百萬筆 Anki 數據的分析）：**快要忘掉的記憶被想起來時，穩定性增強更大。**
+Core insight (from FSRS analysis of millions of Anki reviews): **A fading memory that gets recalled gains MORE stability than a fresh one.**
 
-- R = 0.9（剛查過）→ 1.11× 增長
-- R = 0.3（快忘了）→ 2.01× 增長
+- R = 0.9 (just accessed) → 1.11× growth
+- R = 0.3 (almost forgotten) → 2.01× growth
 
-Grade 來源：
-- 4 = 成功應用（Auto-Capture 偵測到沒被糾正）
-- 3 = 一般存取
-- 1 = 被專家糾正
+Grade sources:
+- 4 = Successfully applied (Auto-Capture detects no correction)
+- 3 = Normal access
+- 1 = Corrected by expert
 
-### 成長路徑：Benna-Fusi 記憶級聯
+### Growth Path: Benna-Fusi Memory Cascade
 
-trust（來源標記）不變，memory_level（耐久度）獨立成長：
+Trust (source label) stays unchanged; memory_level (durability) grows independently:
 
-| Level | 條件 | auto-expire? |
-|:-----:|------|:------------:|
-| 1 新學 | 預設 | ✅ R < 0.02 |
-| 2 驗證中 | 跨 3 sessions 存取 | ✅ R < 0.02 |
-| 3 鞏固 | 14天 + access ≥ 5 | ❌ 永不 |
-| 4 核心 | fundamental 或 access ≥ 50 | ❌ 永不 |
+| Level | Condition | Auto-expire? |
+|:-----:|-----------|:------------:|
+| 1 New | Default | ✅ when R < 0.02 |
+| 2 Verifying | Accessed across 3+ sessions | ✅ when R < 0.02 |
+| 3 Consolidated | 14 days + access ≥ 5 | ❌ Never |
+| 4 Core | Fundamental, or access ≥ 50 | ❌ Never |
 
-一個 inference 節點被存取 50 次後到達 level 4，跟 fundamental 一樣持久。
+An inference node accessed 50 times reaches level 4 — as durable as a fundamental principle.
 
-### 基本功 vs 創意空間
+### Fundamentals vs Creative Space
 
-| 類型 | metadata.category | 行為 |
-|------|:-----------------:|------|
-| 基本功 | `"fundamental"` | R = 1.0 永不衰退。有對錯，違反就是錯 |
-| 創意空間 | `"creative"` | 可衰退、可被挑戰。沒對錯，只有合適與否 |
+| Type | metadata.category | Behavior |
+|------|:-----------------:|----------|
+| Fundamental | `"fundamental"` | R = 1.0, never decays. Has right/wrong answers |
+| Creative | `"creative"` | Can decay, can be challenged. No right/wrong, only fit |
 
 ---
 
-## 搜尋系統
+## Search System
 
-### 三合一混合搜尋
+### Hybrid Three-in-One Search
 
 ```
 score = 0.4 × vector + 0.2 × keyword + 0.3 × graph + memoryScore
 ```
 
-| 層 | 機制 | 擅長 |
-|---|------|------|
-| Vector | sqlite-vec cosine KNN (Qwen3 1024d) | 換了說法但意思一樣 |
-| Keyword | FTS5 BM25 (unicode61) | 精確匹配中英混合 |
-| Graph | Recursive CTE 沿邊展開 1 跳 | 找因果關聯 |
-| memoryScore | R × 0.1 + levelBonus | 越常用越重要 |
+| Layer | Mechanism | Strength |
+|-------|-----------|----------|
+| Vector | sqlite-vec cosine KNN (Qwen3 1024d) | Same meaning, different words |
+| Keyword | FTS5 BM25 (unicode61) | Exact match, multilingual |
+| Graph | Recursive CTE, 1-hop expansion | Causal relationships |
+| memoryScore | R × 0.1 + levelBonus | More used = more important |
 
-### Embedding 設計
+### Embedding Design
 
-- **模型**：Qwen3-Embedding-0.6B（ONNX 量化，~560MB）
-- **本地運行**：零 API 依賴、離線可用
-- **為什麼 Qwen3**：MTEB 多語排行第一、C-MTEB 中文第一
-- **embed 內容**：`name + content`（完整文字）— vector 負責語意匹配，keyword 負責精確匹配，分工明確
-
----
-
-## Anti-Fabrication（防虛構）
-
-AI 傾向把推測當事實。防護規則：
-
-| 規則 | 機制 |
-|------|------|
-| principle 必須有 quote | 沒給專家原話 → 拒絕存入 |
-| inference 不能建因果邊 | must_precede / reason_for 拒絕 inference 節點 |
-| trust 不自動升級 | inference 不會變 principle（需要專家確認 + quote）|
-| level 獨立於 trust | inference 可鞏固到 level 4 但仍標記為「AI 的想法」|
+- **Model**: Qwen3-Embedding-0.6B (ONNX quantized, ~560MB)
+- **Runs locally**: Zero API dependency, works offline
+- **Why Qwen3**: #1 on MTEB multilingual leaderboard, #1 on C-MTEB (Chinese)
+- **Embeds**: `name + content` (full text) — vector handles semantic matching, keyword handles exact matching, clear separation of concerns
 
 ---
 
-## 工具一覽（12 個）
+## Anti-Fabrication
 
-### 知識管理
-| 工具 | 用途 |
-|------|------|
-| `store_knowledge` | 存知識節點。自動 embedding/FTS + 建議連邊 + 初始化衰退參數 |
-| `connect_knowledge` | 建因果邊。含 anti-fabrication 驗證 |
-| `update_knowledge` | 原地更新節點。保留 ID 和所有邊，自動更新索引 |
-| `forget_knowledge` | 標記過時。自動 expire 邊 + 清索引 |
+AI tends to treat its own guesses as facts. Protection rules:
 
-### 搜尋
-| 工具 | 用途 |
-|------|------|
-| `search_memory` | 混合搜尋（vector + keyword + graph + memoryScore）|
-| `traverse_graph` | 沿因果邊遍歷（支援方向/深度/邊類型過濾）|
-| `list_knowledge` | 按條件列出（trust/type/element/source 篩選，時間/存取/strength 排序）|
+| Rule | Mechanism |
+|------|-----------|
+| Principle requires quote | No expert's exact words → rejected |
+| Inference can't create causal edges | must_precede / reason_for reject inference nodes |
+| Trust never auto-upgrades | Inference won't become principle (needs expert confirmation + quote) |
+| Level is independent of trust | Inference can consolidate to level 4 but still labeled "AI's idea" |
 
-### 經驗
-| 工具 | 用途 |
-|------|------|
-| `record_experience` | 記錄工作流軌跡（步驟 + 決策 + 結果）|
-| `recall_experience` | 依情境找類似經驗 |
+---
 
-### 維護
-| 工具 | 用途 |
-|------|------|
+## Tools (12)
+
+### Knowledge Management
+| Tool | Purpose |
+|------|---------|
+| `store_knowledge` | Store a knowledge node. Auto embedding/FTS + suggests edges + initializes decay params |
+| `connect_knowledge` | Create a causal edge. Includes anti-fabrication validation |
+| `update_knowledge` | Update node in-place. Preserves ID and all edges, auto-updates indexes |
+| `forget_knowledge` | Mark as expired. Auto-expires edges + cleans indexes |
+
+### Search
+| Tool | Purpose |
+|------|---------|
+| `search_memory` | Hybrid search (vector + keyword + graph + memoryScore) |
+| `traverse_graph` | Walk causal edges (supports direction/depth/edge type filtering) |
+| `list_knowledge` | List by filters (trust/type/element/source, sort by time/access/strength) |
+
+### Experience
+| Tool | Purpose |
+|------|---------|
+| `record_experience` | Record workflow trace (steps + decisions + outcomes) |
+| `recall_experience` | Find similar past experiences by context |
+
+### Maintenance
+| Tool | Purpose |
+|------|---------|
 | `maintain_graph` | Memory Enzyme — prune / merge / validate / orphan |
-| `crystallize_skill` | 檢查 KG 與 skill 文件的同步狀態 |
-| `memory_stats` | 圖譜統計 |
+| `crystallize_skill` | Check KG-to-skill-file sync status |
+| `memory_stats` | Graph statistics |
 
 ---
 
-## Hooks（自動化）
+## Hooks (Automation)
 
-### 生命週期覆蓋
+### Lifecycle Coverage
 
 ```
-[新 Session]
-  └─ session-start → 自動修復 + 記憶衰退 + consolidation 偵測 + 邊 review
+[New Session]
+  └─ session-start → auto-repair + memory decay + consolidation detection + edge review
 
-[使用者送訊息]
-  └─ auto-recall → 查 KG → 注入相關知識
-                 → correction detector → 偵測糾正
+[User Sends Message]
+  └─ auto-recall → query KG → inject relevant knowledge
+                 → correction detector → detect corrections
 
-[AI 準備操作]
-  └─ search-enforcer → 特定模式下擋住沒查記憶的操作
+[AI About to Act]
+  └─ search-enforcer → block operations without prior memory search (in specific modes)
 
-[AI 回覆完]
-  └─ auto-capture → 分析學習信號 → 擋住 → 主 Claude 用 MCP 存
+[AI Finishes Response]
+  └─ auto-capture → analyze learning signals → block → main Claude stores via MCP
 
-[Context 壓縮]
-  └─ post-compact → 重注入核心知識
+[Context Compaction]
+  └─ post-compact → re-inject core knowledge
 ```
 
-### settings.json 設定範例
+### settings.json Example
 
 ```json
 {
@@ -296,7 +296,7 @@ AI 傾向把推測當事實。防護規則：
       "hooks": [{
         "type": "agent",
         "model": "claude-opus-4-6",
-        "prompt": "See hooks/auto-capture prompt in settings.json",
+        "prompt": "See auto-capture prompt in settings.json",
         "timeout": 60
       }]
     }],
@@ -311,243 +311,217 @@ AI 傾向把推測當事實。防護規則：
 }
 ```
 
-### Auto-Capture 設計
+### Auto-Capture Design
 
-Agent hook 不能呼叫 MCP 工具。解法：agent 分析對話 → 輸出 `<auto-capture>` 指令 → 擋住主 Claude → 主 Claude 用 MCP 存知識 → 再次觸發 Stop → `stop_hook_active=true` → 放行。
+Agent hooks cannot call MCP tools. Solution: the agent analyzes the conversation → outputs `<auto-capture>` instructions → blocks the main Claude → main Claude uses MCP tools to store knowledge → Stop fires again → `stop_hook_active=true` → allows stop.
 
-體感：主 AI 突然「想到」要存知識，自然地用 MCP 工具存入。
-
----
-
-## Session-Start 自動維護
-
-每個新 session 自動執行：
-
-1. 修復 dangling edges
-2. 清理 expired 節點的殘留索引
-3. 報告孤兒節點
-4. 記憶衰退 — R < 0.02 且 level < 3 → expire
-5. 衰退報告 — 顯示 R < 0.3 的節點
-6. Consolidation 偵測 — vector similarity < 0.25 的節點對
-7. 弱邊清理 — weight < 0.3 → expire
-8. 最近邊 review — 24 小時內新增的邊
+User experience: the main AI naturally "remembers" to save knowledge, seamlessly using MCP tools.
 
 ---
 
-## 資料模型
+## Session-Start Auto-Maintenance
 
-### 節點
+Automatically runs on every new session:
 
-| 欄位 | 說明 |
-|------|------|
+1. **Repair dangling edges** — edges pointing to expired nodes
+2. **Clean residual indexes** — FTS5/vec entries for expired nodes
+3. **Report orphan nodes** — nodes with no edges (>5 triggers warning)
+4. **Memory decay** — R < 0.02 and level < 3 → expire
+5. **Decay report** — show nodes with R < 0.3 (actively decaying)
+6. **Consolidation detection** — vector similarity < 0.25 node pairs
+7. **Weak edge cleanup** — weight < 0.3 → expire
+8. **Recent edge review** — edges created in last 24 hours
+
+---
+
+## Data Model
+
+### Nodes
+
+| Field | Description |
+|-------|-------------|
 | type | rule / procedure / observation / insight / core / preference |
-| trust | principle（專家教的）/ pattern（觀察的）/ inference（推測的）|
-| stability | FSRS S（天數），控制衰退速度 |
-| memory_level | Benna-Fusi level 1-4，控制耐久度 |
-| metadata.category | fundamental（基本功）/ creative（創意空間）|
+| trust | principle (expert-taught) / pattern (observed) / inference (AI-guessed) |
+| stability | FSRS S (days), controls decay speed |
+| memory_level | Benna-Fusi level 1-4, controls durability |
+| metadata.category | fundamental (has right/wrong) / creative (no right/wrong) |
 | source | session ID / "teacher" / "auto-capture" |
-| quote | 專家原話（principle 必填）|
+| quote | Expert's exact words (required for principle) |
 
-### 邊
+### Edges
 
-| 邊 | 意義 |
-|----|------|
-| `must_precede` | A 必須在 B 之前 |
-| `requires_reading` | 操作 A 前要讀 B |
-| `refines` | A 細化 B |
-| `contradicts` | A 跟 B 矛盾 |
-| `reason_for` | A 是做 B 的原因 |
-| `causes` / `implies` / `aligns_to` / `tends_to` / `observed_in` | 其他語義關聯 |
-
----
-
-## 安全性
-
-| 風險 | 防護 |
-|------|------|
-| SQL injection | 參數化查詢 + 白名單驗證 |
-| FTS5 特殊字元 | sanitize + 雙引號包裝 |
-| store 非 atomic | node + FTS 包進 transaction |
-| 無效 ID timeout | 移入 try/except 回傳明確錯誤 |
-| Stability 溢出 | cap 365 天 |
-| Level 單 session 灌水 | metadata.sessions 追蹤跨 session |
+| Edge | Meaning |
+|------|---------|
+| `must_precede` | A must come before B |
+| `requires_reading` | Must read B before operating on A |
+| `refines` | A refines/extends B |
+| `contradicts` | A contradicts B |
+| `reason_for` | A is the reason for B |
+| `causes` / `implies` / `aligns_to` / `tends_to` / `observed_in` | Other semantic relations |
 
 ---
 
-## 目錄結構
+## Security
 
-```
-mcp/knowledge-graph/
-├── main.js                    # MCP server 入口
-├── package.json               # 依賴
-├── knowledge.db               # SQLite（首次啟動自動建立）
-├── lib/
-│   ├── db.js                  # Schema + migration
-│   ├── decay.js               # CortexGraph × FSRS × Benna-Fusi
-│   ├── embeddings.js          # Qwen3 ONNX（本地，零 API 依賴）
-│   ├── search.js              # 三合一混合搜尋
-│   ├── graph.js               # Recursive CTE 遍歷
-│   └── enzyme.js              # Memory Enzyme 維護
-├── tools/                     # 12 MCP 工具
-├── hooks/                     # 6 自動化 hooks
-└── scripts/                   # 匯入 / backfill 腳本
-```
-
-## 依賴
-
-| 套件 | 用途 |
-|------|------|
-| `better-sqlite3` | SQLite driver |
-| `sqlite-vec` | 向量搜尋 extension |
-| `@huggingface/transformers` | 本地 ONNX embedding |
-| `@modelcontextprotocol/sdk` | MCP server SDK |
-| `zod` | 工具參數驗證 |
-| `uuid` | ID 生成 |
-
-## 參考資料
-
-### 學術論文
-| 論文 | 貢獻 |
-|------|------|
-| [FSRS Algorithm](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm) | Power-law forgetting curve + desirable difficulty。19 個機器學習參數，從幾百萬筆 Anki review 數據訓練 |
-| [MemoryBank (AAAI 2024)](https://arxiv.org/abs/2305.10250) | LLM 長期記憶 + Ebbinghaus forgetting curve 實作。記憶強度隨時間衰退，存取頻率強化 |
-| [Benna & Fusi (Nature Neuroscience 2016)](https://www.nature.com/articles/nn.4401) | 突觸級聯模型。多時間尺度存儲，記憶壽命隨突觸數線性增長 |
-| [Generative Agents (Stanford, UIST 2023)](https://dl.acm.org/doi/fullHtml/10.1145/3586183.3606763) | recency + importance + relevance 三信號檢索。Reflection 機制壓縮觀察為高階洞察 |
-| [Zep: Temporal KG Architecture](https://arxiv.org/abs/2501.13956) | 雙時間模型（event time + ingestion time）。邊的時間有效性區間 |
-| [Theories of Synaptic Memory Consolidation](https://arxiv.org/html/2405.16922v1) | Elastic Weight Consolidation + Synaptic Intelligence。重要參數保護機制 |
-| [Mem0: AI Agent Memory](https://arxiv.org/html/2504.19413v1) | Production-ready agent memory 架構。Graph + vector hybrid |
-
-### 開源實作
-| 專案 | 借鑑 |
-|------|------|
-| [CortexGraph](https://github.com/prefrontal-systems/cortexgraph) | 兩階段衰退（power-law + exponential blend）、consolidation 門檻、sub-linear frequency n^0.6 |
-| [Claude-Recall](https://github.com/anthropics/claude-recall) | search enforcer hook、correction detector、skill 結晶化 |
-| [A-MEM](https://github.com/a-mem/a-mem) | typed edges（relation_type + reasoning + weight）、memory enzyme 維護 |
-| [Mnemon](https://github.com/mnemon-dev/mnemon) | 4 圖架構、intent-aware 遍歷、importance decay + access-count boosting |
-| [memsearch (Zilliz)](https://github.com/zilliztech/memsearch) | 從 OpenClaw 提取的獨立記憶庫。Hybrid dense+BM25+RRF、SHA-256 去重 |
-| [second-brain (jugaad-lab)](https://github.com/jugaad-lab/second-brain) | Category-weighted decay、auto-consolidation（7天窗口）、entity graph weekly rebuild |
-| [Graphiti (Zep)](https://github.com/getzep/graphiti) | Temporal knowledge graph、bi-temporal model、edge invalidation |
-| [Hippocampus Memory Skill](https://github.com/openclaw/skills) | Salience formula（0.5×semantic + 0.2×reinforcement + 0.2×recency + 0.1×frequency）、4-tier memory |
-| [YourMemory](https://dev.to/sachit_mishra_686a94d1bb5/i-built-memory-decay-for-ai-agents-using-the-ebbinghaus-forgetting-curve-1b0e) | 最簡實作：`strength = importance × e^(-λ × days) × (1 + recall_count × 0.2)` |
-
-### 認知科學
-| 概念 | 應用 |
-|------|------|
-| [Ebbinghaus Forgetting Curve](https://en.wikipedia.org/wiki/Forgetting_curve) | 記憶強度隨時間指數衰退的基礎模型 |
-| [SM-2 Algorithm (SuperMemo)](https://super-memory.com/english/ol/sm2.htm) | 間隔重複的經典算法。EF（easiness factor）+ 間隔遞增 |
-| [Desirable Difficulty](https://en.wikipedia.org/wiki/Desirable_difficulty) | Robert Bjork：適當的困難度增強長期記憶。FSRS 的核心理論基礎 |
-| Synaptic Tagging and Capture | 突觸標記 + 蛋白質合成 = 記憶鞏固。對應我們的 level promotion |
+| Risk | Protection |
+|------|-----------|
+| SQL injection | Parameterized queries + whitelist validation |
+| FTS5 special characters | Sanitize + double-quote wrapping |
+| Non-atomic store | Node + FTS wrapped in transaction |
+| Invalid ID timeout | try/except returns clear error |
+| Stability overflow | Capped at 365 days |
+| Single-session level inflation | metadata.sessions tracks cross-session usage |
 
 ---
 
-## 搭配使用
+## Integration
 
-### 推薦的 Skill 結構
+### Recommended Skill Structure
 
-Knowledge Graph 儲存「知識」，Skill 文件定義「行為」。兩者互補：
+Knowledge Graph stores "knowledge"; Skill files define "behavior". They complement each other:
 
-- **KG**：老師教了什麼、觀察到什麼、AI 推測了什麼（知識的存儲和檢索）
-- **Skill**：拿到知識後怎麼做（可執行的工作流程和 checklist）
+- **KG**: What the expert taught, what was observed, what the AI inferred (storage & retrieval)
+- **Skill**: What to do with that knowledge (executable workflows & checklists)
 
-推薦的 skill 目錄結構：
+Recommended skill directory structure:
 
 ```
 skills/
-├── <domain>/                    # 領域知識（如 coding/, design/, medical/）
-│   ├── principles.md            # 核心原則
-│   ├── elements/                # 各元素/模組的操作流程
+├── <domain>/                    # Domain knowledge (e.g., coding/, design/, medical/)
+│   ├── principles.md            # Core principles
+│   ├── elements/                # Operation workflows per element/module
 │   │   ├── <element>/
-│   │   │   └── workflow.md      # 工具操作步驟（可執行）
-│   │   └── checklist.md         # 元素清單 + 依賴圖 + 標準流程
-│   └── evaluation/              # 品質評估標準
-├── specialty/                   # 專業分支覆寫（如適用）
+│   │   │   └── workflow.md      # Executable tool operation steps
+│   │   └── checklist.md         # Element list + dependency graph + standard flow
+│   └── evaluation/              # Quality evaluation criteria
+├── specialty/                   # Specialty overrides (if applicable)
 │   └── <specialty>/
-│       └── <domain>/            # 分支特定的知識覆蓋通用知識
-├── tools/                       # 工具使用知識
-│   ├── gotchas/                 # 危險操作 / 陷阱
-│   └── batch/                   # 批量工具對照
-└── preflight.md                 # 做事前必讀清單
+│       └── <domain>/            # Specialty-specific knowledge overrides
+├── tools/                       # Tool usage knowledge
+│   ├── gotchas/                 # Dangerous operations / pitfalls
+│   └── batch/                   # Batch tool reference
+└── preflight.md                 # Pre-work required reading checklist
 ```
 
-### Skill 文件寫作原則
+### Skill File Writing Principles
 
 ```markdown
-# Element Name — 工具操作流程
+# Element Name — Tool Operation Workflow
 
-## 相關元素
+## Related Elements
 
-| 依賴 | 原因 | 必讀 |
-|------|------|------|
-| X | 為什麼依賴 X | `path/to/x.md` |
+| Dependency | Reason | Must Read |
+|------------|--------|-----------|
+| X | Why X is needed | `path/to/x.md` |
 
-## 操作步驟
+## Operation Steps
 
-1. 具體到可以直接執行的步驟
-2. 包含工具呼叫範例（tool_name + 參數）
-3. 不用抽象描述（「做好」→ 改成「用 X 工具設定 Y 參數為 Z」）
+1. Specific enough to execute directly
+2. Include tool call examples (tool_name + parameters)
+3. No abstract descriptions ("do it well" → "use tool X to set param Y to Z")
 
-## 品質標準
+## Quality Criteria
 
-具體數值或定性描述，agent 看了知道怎麼判斷。
+Concrete values or qualitative descriptions the agent can use to judge.
 ```
 
-**關鍵**：skill 文件必須「可執行」— agent（或 subagent）讀完後能直接操作，不需要再猜。抽象描述如「鼓組要少」對 agent 沒用，改成「mute bars 7-8 的 kick clips」。
+**Key**: Skill files must be "executable" — an agent (or subagent) should be able to operate directly after reading, without guessing.
 
-### KG 與 Skill 的同步
+### KG-Skill Synchronization
 
-用 `crystallize_skill` 工具檢查 KG 中是否有知識尚未反映到 skill 文件：
+Use `crystallize_skill` to check if KG contains knowledge not yet reflected in skill files:
 
 ```
-crystallize_skill(topic="808", skill_paths=["skills/arrangement/elements/808/workflow.md"])
+crystallize_skill(topic="authentication", skill_paths=["skills/coding/elements/auth/workflow.md"])
 ```
 
-回傳 unsynced 知識清單 → 手動更新 skill 文件。
+Returns unsynced knowledge list → manually update skill files.
 
-### 搭配其他 MCP Server
+### Pairing With Other MCP Servers
 
-Knowledge Graph 是記憶層，通常需要搭配一個**領域操作 MCP** 來實際執行工作：
+Knowledge Graph is the memory layer. It typically pairs with a **domain-specific MCP** for actual operations:
 
-| 組合 | Knowledge Graph 負責 | 領域 MCP 負責 |
-|------|---------------------|--------------|
-| 程式開發 | 架構決策、code review 經驗、bug 模式 | IDE / Git / CI 操作 |
-| 設計 | 設計原則、品牌規範、使用者回饋 | Figma / 設計工具操作 |
-| 資料分析 | 分析方法論、領域知識、過去分析經驗 | DB / BI 工具操作 |
-| 任何專業領域 | 領域知識、工作流經驗、專家教學 | 對應的操作工具 |
+| Combination | Knowledge Graph Handles | Domain MCP Handles |
+|-------------|------------------------|-------------------|
+| Software Development | Architecture decisions, code review lessons, bug patterns | IDE / Git / CI operations |
+| Design | Design principles, brand guidelines, user feedback | Figma / design tool operations |
+| Data Analysis | Analysis methodology, domain knowledge, past analyses | DB / BI tool operations |
+| Any Professional Domain | Domain knowledge, workflow experience, expert teaching | Corresponding operation tools |
 
-Knowledge Graph 不執行領域操作 — 它只記住「怎麼做」和「為什麼這樣做」，然後在需要時自動回憶給 agent 參考。
+Knowledge Graph doesn't perform domain operations — it only remembers "how to do it" and "why it's done this way", then automatically recalls relevant knowledge when needed.
 
-### 搭配 Session Reader
+### Pairing With Session Readers
 
-知識萃取需要讀取歷史對話。推薦搭配能讀取 Claude Code CLI 或其他 session transcript 的 MCP server，用於回顧教學過程、提取知識。
+Knowledge extraction requires reading historical conversations. Recommended to pair with MCP servers that can read Claude Code CLI or other session transcripts, enabling review of teaching processes and knowledge extraction.
 
 ---
 
-## 致謝
+## References
 
-本系統的設計融合了多個開源社群和學術研究的智慧。特別感謝：
+### Academic Papers
+| Paper | Contribution |
+|-------|-------------|
+| [FSRS Algorithm](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm) | Power-law forgetting curve + desirable difficulty. 19 ML parameters trained on millions of Anki reviews |
+| [MemoryBank (AAAI 2024)](https://arxiv.org/abs/2305.10250) | LLM long-term memory + Ebbinghaus forgetting curve implementation |
+| [Benna & Fusi (Nature Neuroscience 2016)](https://www.nature.com/articles/nn.4401) | Synaptic cascade model. Multi-timescale storage, memory lifetime scales linearly with synapse count |
+| [Generative Agents (Stanford, UIST 2023)](https://dl.acm.org/doi/fullHtml/10.1145/3586183.3606763) | Recency + importance + relevance three-signal retrieval. Reflection mechanism compresses observations into higher-order insights |
+| [Zep: Temporal KG Architecture](https://arxiv.org/abs/2501.13956) | Bi-temporal model (event time + ingestion time). Edge temporal validity intervals |
+| [Theories of Synaptic Memory Consolidation](https://arxiv.org/html/2405.16922v1) | Elastic Weight Consolidation + Synaptic Intelligence. Critical parameter protection |
+| [Mem0: AI Agent Memory](https://arxiv.org/html/2504.19413v1) | Production-ready agent memory architecture. Graph + vector hybrid |
 
-- **[open-spaced-repetition](https://github.com/open-spaced-repetition)** 團隊開發的 FSRS 算法，提供了經過數百萬筆數據驗證的 desirable difficulty 模型
-- **[prefrontal-systems](https://github.com/prefrontal-systems)** 的 CortexGraph 專案，其兩階段衰退模型為本系統的記憶衰退引擎提供了核心基礎
-- **[Anthropic](https://github.com/anthropics)** 的 Claude-Recall 專案，其 hook 架構和 search enforcer 模式直接啟發了本系統的自動化層
-- **Stanford HCI Group** 的 Generative Agents 論文（Park et al., 2023），其三信號檢索和 reflection 機制影響了搜尋評分和 consolidation 設計
-- **Benna & Fusi** 在 Nature Neuroscience 發表的突觸級聯模型，為 memory level 的成長路徑提供了神經科學理論基礎
-- **[Zilliz](https://github.com/zilliztech)** 的 memsearch、**[jugaad-lab](https://github.com/jugaad-lab)** 的 second-brain、**[Zep](https://github.com/getzep)** 的 Graphiti 等開源專案，各自貢獻了寶貴的實作經驗
+### Open Source Implementations
+| Project | What We Borrowed |
+|---------|-----------------|
+| [CortexGraph](https://github.com/prefrontal-systems/cortexgraph) | Two-component decay (power-law + exponential blend), consolidation threshold, sub-linear frequency n^0.6 |
+| [Claude-Recall](https://github.com/anthropics/claude-recall) | Search enforcer hook, correction detector, skill crystallization |
+| [A-MEM](https://github.com/a-mem/a-mem) | Typed edges (relation_type + reasoning + weight), memory enzyme maintenance |
+| [Mnemon](https://github.com/mnemon-dev/mnemon) | 4-graph architecture, intent-aware traversal, importance decay + access-count boosting |
+| [memsearch (Zilliz)](https://github.com/zilliztech/memsearch) | Standalone memory library extracted from OpenClaw. Hybrid dense+BM25+RRF, SHA-256 dedup |
+| [second-brain (jugaad-lab)](https://github.com/jugaad-lab/second-brain) | Category-weighted decay, auto-consolidation (7-day window), entity graph weekly rebuild |
+| [Graphiti (Zep)](https://github.com/getzep/graphiti) | Temporal knowledge graph, bi-temporal model, edge invalidation |
+| [Hippocampus Memory Skill](https://github.com/openclaw/skills) | Salience formula (0.5×semantic + 0.2×reinforcement + 0.2×recency + 0.1×frequency), 4-tier memory |
+| [YourMemory](https://dev.to/sachit_mishra_686a94d1bb5/i-built-memory-decay-for-ai-agents-using-the-ebbinghaus-forgetting-curve-1b0e) | Simplest implementation: `strength = importance × e^(-λ × days) × (1 + recall_count × 0.2)` |
+
+### Cognitive Science
+| Concept | Application |
+|---------|-------------|
+| [Ebbinghaus Forgetting Curve](https://en.wikipedia.org/wiki/Forgetting_curve) | Foundation model for memory strength decaying over time |
+| [SM-2 Algorithm (SuperMemo)](https://super-memory.com/english/ol/sm2.htm) | Classic spaced repetition algorithm. EF (easiness factor) + interval growth |
+| [Desirable Difficulty](https://en.wikipedia.org/wiki/Desirable_difficulty) | Robert Bjork: appropriate difficulty enhances long-term memory. Core theoretical basis of FSRS |
+| Synaptic Tagging and Capture | Synaptic tag + protein synthesis = memory consolidation. Maps to our level promotion mechanism |
 
 ---
 
-## 部署
+## Acknowledgments
 
-### 包含在 repo 中
-- 所有 `lib/`、`tools/`、`hooks/`、`scripts/` 程式碼
-- Hooks 設定範例
+This system's design integrates wisdom from multiple open-source communities and academic research. Special thanks to:
 
-### 使用者自己產生
-- `knowledge.db` — 首次啟動自動建立
-- Qwen3 ONNX 模型 — 首次 embed 時自動下載
+- **[open-spaced-repetition](https://github.com/open-spaced-repetition)** for the FSRS algorithm, providing a desirable difficulty model validated on millions of data points
+- **[prefrontal-systems](https://github.com/prefrontal-systems)** for CortexGraph, whose two-component decay model forms the core of our memory decay engine
+- **[Anthropic](https://github.com/anthropics)** for Claude-Recall, whose hook architecture and search enforcer patterns directly inspired our automation layer
+- **Stanford HCI Group** for the Generative Agents paper (Park et al., 2023), whose three-signal retrieval and reflection mechanisms influenced our search scoring and consolidation design
+- **Benna & Fusi** for their synaptic cascade model published in Nature Neuroscience, providing the neuroscience foundation for our memory level growth path
+- **[Zilliz](https://github.com/zilliztech)** (memsearch), **[jugaad-lab](https://github.com/jugaad-lab)** (second-brain), **[Zep](https://github.com/getzep)** (Graphiti), and other open-source projects that each contributed valuable implementation experience
+
+---
+
+## Deployment
+
+### Included in the Repository
+- All `lib/`, `tools/`, `hooks/`, `scripts/` source code
+- Hook configuration examples
+
+### Generated by User
+- `knowledge.db` — automatically created on first startup
+- Qwen3 ONNX model — automatically downloaded on first embed
 - `node_modules/` — `npm install`
 
-### 首次使用
+### First-Time Setup
 1. `npm install`
-2. 設定 `.mcp.json` + `~/.claude/settings.json` hooks
-3. 啟動 Claude Code → MCP 自動啟動 → 模型自動下載
-4. 開始對話 → hooks 自動運作 → 知識自動累積
+2. Configure `.mcp.json` + `~/.claude/settings.json` hooks
+3. Start Claude Code → MCP auto-starts → model auto-downloads
+4. Begin conversation → hooks auto-run → knowledge auto-accumulates
+
+## License
+
+MIT
