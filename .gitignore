@@ -1,0 +1,4 @@
+node_modules/
+knowledge.db
+knowledge.db-shm
+knowledge.db-wal
