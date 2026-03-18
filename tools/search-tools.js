@@ -19,12 +19,26 @@ export function registerSearchTools(server) {
       mode: z.enum(['hybrid', 'vector', 'keyword']).default('hybrid')
         .describe('Search mode: hybrid (all 3), vector (semantic only), keyword (FTS5 only)'),
       limit: z.number().min(1).max(50).default(10).describe('Max results'),
+      compact: z.boolean().default(false)
+        .describe('Return compact index only (id, name, type, trust, score, edges_count). Use get_knowledge(ids) to fetch full details for selected results.'),
     },
-    async ({ query, mode, limit }) => {
+    async ({ query, mode, limit, compact }) => {
       const results = await hybridSearch(query, { mode, limit });
 
       if (results.length === 0) {
         return { content: [{ type: 'text', text: 'No results found.' }] };
+      }
+
+      if (compact) {
+        const compactResults = results.map((r, i) =>
+          `[${i + 1}] ${r.id} | ${r.name} (${r.trust}/${r.type}, score: ${r.score.toFixed(3)}, ${r.edges.length} edges)`
+        );
+        return {
+          content: [{
+            type: 'text',
+            text: `Found ${results.length} results (compact — use get_knowledge to expand):\n\n${compactResults.join('\n')}`
+          }]
+        };
       }
 
       const formatted = results.map((r, i) => {
@@ -47,6 +61,77 @@ export function registerSearchTools(server) {
         content: [{
           type: 'text',
           text: `Found ${results.length} results:\n\n${formatted.join('\n')}`
+        }]
+      };
+    }
+  );
+
+  // ─── get_knowledge ───
+  server.tool(
+    'get_knowledge',
+    'Fetch full details for specific knowledge nodes by ID. Use after search_memory(compact=true) to expand selected results.',
+    {
+      ids: z.array(z.string()).min(1).max(20).describe('Node IDs to fetch'),
+    },
+    async ({ ids }) => {
+      const db = getDb();
+      const { reinforceOnAccess } = await import('../lib/decay.js');
+
+      const results = [];
+      for (const nodeId of ids) {
+        const node = db.prepare('SELECT * FROM nodes WHERE id = ? AND valid_until IS NULL').get(nodeId);
+        if (!node) continue;
+
+        // 1-hop edges (same logic as search.js)
+        const edges = db.prepare(`
+          SELECT e.*,
+            CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END AS direction,
+            CASE WHEN e.source_id = ? THEN n2.name ELSE n1.name END AS connected_name
+          FROM edges e
+          LEFT JOIN nodes n1 ON e.source_id = n1.id
+          LEFT JOIN nodes n2 ON e.target_id = n2.id
+          WHERE (e.source_id = ? OR e.target_id = ?) AND e.valid_until IS NULL
+        `).all(nodeId, nodeId, nodeId, nodeId);
+
+        results.push({
+          ...node,
+          metadata: node.metadata ? JSON.parse(node.metadata) : null,
+          edges: edges.map(e => ({
+            relation_type: e.relation_type,
+            direction: e.direction,
+            connected_name: e.connected_name,
+            reasoning: e.reasoning,
+            weight: e.weight,
+          })),
+        });
+
+        reinforceOnAccess(db, nodeId, 3);
+      }
+
+      if (results.length === 0) {
+        return { content: [{ type: 'text', text: 'No valid nodes found for the given IDs.' }], isError: true };
+      }
+
+      const formatted = results.map((r, i) => {
+        let text = `[${i + 1}] ${r.name} (${r.trust}/${r.type})\n`;
+        text += `    ${r.content}\n`;
+        if (r.quote) text += `    💬 "${r.quote}"\n`;
+        if (r.edges.length > 0) {
+          text += `    Edges:\n`;
+          for (const e of r.edges) {
+            const arrow = e.direction === 'outgoing' ? '→' : '←';
+            text += `      ${arrow} [${e.relation_type}] ${e.connected_name}`;
+            if (e.reasoning) text += ` (${e.reasoning})`;
+            text += '\n';
+          }
+        }
+        return text;
+      });
+
+      return {
+        content: [{
+          type: 'text',
+          text: `${results.length} node(s):\n\n${formatted.join('\n')}`
         }]
       };
     }
