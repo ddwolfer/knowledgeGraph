@@ -45,14 +45,21 @@ const CORRECTION_PATTERNS = [
   /remember\s+/i,        // remember to X
 ];
 
-// Read stdin
+// Read stdin with timeout guard
 let input = '';
-for await (const chunk of process.stdin) {
-  input += chunk;
+try {
+  const timeout = setTimeout(() => process.exit(0), 8000);
+  for await (const chunk of process.stdin) {
+    input += chunk;
+  }
+  clearTimeout(timeout);
+} catch {
+  process.exit(0);
 }
 
 let prompt;
 try {
+  if (!input.trim()) process.exit(0);
   const data = JSON.parse(input);
   prompt = data.prompt || '';
 } catch {
@@ -107,28 +114,12 @@ try {
       }
 
       if (results.length > 0) {
-        const getEdges = db.prepare(`
-          SELECT e.relation_type,
-            CASE WHEN e.source_id = ? THEN n2.name ELSE n1.name END as connected,
-            CASE WHEN e.source_id = ? THEN 'outgoing' ELSE 'incoming' END as dir
-          FROM edges e
-          LEFT JOIN nodes n1 ON e.source_id = n1.id
-          LEFT JOIN nodes n2 ON e.target_id = n2.id
-          WHERE (e.source_id = ? OR e.target_id = ?) AND e.valid_until IS NULL
-          LIMIT 3
-        `);
-
+        // Compact format: name + trust/type only, no full content or edges
+        // Agent can use search_memory or get_knowledge for full details
         memoryContext = '<memory-context>\n';
+        memoryContext += 'Related knowledge (use get_knowledge(ids) for details):\n';
         for (const r of results) {
-          memoryContext += `  [${r.trust}/${r.type}] ${r.name}\n`;
-          memoryContext += `    ${r.content}\n`;
-          if (r.quote) memoryContext += `    quote: "${r.quote}"\n`;
-
-          const edges = getEdges.all(r.node_id, r.node_id, r.node_id, r.node_id);
-          for (const e of edges) {
-            const arrow = e.dir === 'outgoing' ? '->' : '<-';
-            memoryContext += `    ${arrow} [${e.relation_type}] ${e.connected}\n`;
-          }
+          memoryContext += `  - [${r.trust}/${r.type}] ${r.name} (id: ${r.node_id})\n`;
         }
         memoryContext += '</memory-context>';
 
